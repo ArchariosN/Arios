@@ -1,0 +1,95 @@
+%% 卫星制造项目管理系统 — 时序图
+%% 架构师：高见远，2026-06-26
+
+%% ===== 流程一：应用启动 → 加载 BOM → 渲染树 =====
+sequenceDiagram
+    participant User as 用户
+    participant Main as main.tsx
+    participant App as App.tsx
+    participant BomStore as useBomStore
+    participant PhaseStore as usePhaseStore
+    participant Service as MockDataService
+    participant Parser as bomParser
+    participant Seed as seedRandom
+    participant Tree as BomTree组件
+
+    User->>Main: 打开浏览器访问
+    Main->>App: ReactDOM.createRoot().render(<App/>)
+    App->>BomStore: useEffect → loadBom()
+    App->>PhaseStore: useEffect → 初始化 AIT/任务
+
+    BomStore->>BomStore: set loading=true
+    BomStore->>Service: fetchProject()
+
+    Service->>Service: fetch('/data/bom_tree.json')
+    Service-->>Service: RawBomNode (119条物料)
+    Service->>Parser: parseBomTree(rawNode)
+    Parser->>Parser: 识别 level 0=ROOT, 1=整星, 2=分系统, 3=单机/零部件
+    Parser->>Seed: 为每个 Unit 生成 Mock 状态
+    Seed-->>Parser: 确定性随机状态 (isKitComplete/status/deliveryDate)
+    Parser-->>Service: Project (完整领域模型)
+    Service-->>BomStore: Promise<Project>
+
+    BomStore->>BomStore: set project, loading=false
+    BomStore->>BomStore: persist → localStorage
+    BomStore-->>App: 状态更新触发重渲染
+
+    App->>Tree: 传入 project 数据
+    Tree->>Tree: 构建树节点 (ROOT→整星→12分系统→单机/零部件)
+    Tree-->>User: 渲染五层级可折叠树
+
+%% ===== 流程二：用户编辑单机状态 → 更新齐套看板 =====
+sequenceDiagram
+    participant User as 用户
+    participant Detail as NodeDetail
+    participant BomStore as useBomStore
+    participant KitCalc as kitCalculator
+    participant KitBoard as KitBoard
+
+    User->>Detail: 在树详情面板勾选「正样件」齐套
+    Detail->>BomStore: updateUnit('EQ0101-220010', { status: { flight: true } })
+
+    BomStore->>BomStore: 不可变更新 project.satellite.subsystems[].units[]
+    Note over BomStore: 使用展开运算符深拷贝<br/>找到目标 Unit 并合并 updates
+    BomStore->>BomStore: persist → localStorage 自动保存
+    BomStore-->>Detail: 状态更新，详情面板重渲染
+
+    par 并行触发齐套看板更新
+        Detail-->>User: 三状态勾选即时反映
+    and
+        KitBoard->>KitCalc: calcAllKits(project) [Zustand selector 自动重算]
+        KitCalc->>KitCalc: 遍历 12 分系统，统计 completeUnits/totalUnits
+        KitCalc-->>KitBoard: SubsystemKitStatus[12] (含更新后的 rate/status)
+        KitBoard-->>User: 姿轨控分系统齐套率 78%→89%，色块黄→绿
+    end
+
+%% ===== 流程三：AIT 拖拽排序 → 持久化 =====
+sequenceDiagram
+    participant User as 用户
+    participant Kanban as AitKanban
+    participant Dnd as @dnd-kit DndContext
+    participant PhaseStore as usePhaseStore
+    participant Persist as localStorage
+
+    User->>Kanban: 拖拽「电测#1」从「待开始」到「进行中」
+    Kanban->>Dnd: onDragStart({ active: '电测#1' })
+    Dnd-->>Kanban: 拖拽中视觉反馈
+
+    User->>Kanban: 松开鼠标
+    Kanban->>Dnd: onDragEnd({ active, over })
+    Dnd-->>Kanban: { active.id, over.id, over.data.current.containerId }
+
+    Kanban->>Kanban: 判断拖拽类型
+    alt 跨列拖拽（变更状态）
+        Kanban->>PhaseStore: moveAitWork('电测#1', 'in_progress', 0)
+    else 列内排序
+        Kanban->>PhaseStore: moveAitWork('电测#1', 'pending', newIndex)
+    end
+
+    PhaseStore->>PhaseStore: 更新 aitWorks[]：修改 status + order
+    Note over PhaseStore: 1. 找到目标 work<br/>2. 更新 status<br/>3. 重新计算同列 order<br/>4. 不可变替换数组
+    PhaseStore->>Persist: persist 中间件自动写入
+    Persist-->>Persist: localStorage.setItem('phase-storage', JSON.stringify)
+
+    PhaseStore-->>Kanban: 状态更新触发重渲染
+    Kanban-->>User: 「电测#1」出现在「进行中」列，序号正确

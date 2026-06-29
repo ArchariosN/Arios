@@ -1,0 +1,181 @@
+%% 卫星制造项目管理系统 — 类图
+%% 架构师：高见远，2026-06-26
+
+classDiagram
+    class Project {
+        +string id
+        +string name
+        +string satelliteModel
+        +Satellite satellite
+    }
+
+    class Satellite {
+        +string partNo
+        +string name
+        +string manufacturer
+        +Subsystem[] subsystems
+    }
+
+    class Subsystem {
+        +string partNo
+        +string name
+        +Unit[] units
+    }
+
+    class Unit {
+        +string partNo
+        +string name
+        +string spec
+        +string manufacturer
+        +string qualityLevel
+        +string form
+        +number quantity
+        +string location
+        +string unit
+        +UnitType type
+        +UnitStatus status
+        +string[] inSatellite
+        +boolean isKitComplete
+        +ProductionStatus productionStatus
+        +string~?~ deliveryDate
+    }
+
+    class UnitStatus {
+        +boolean electrical
+        +boolean qualification
+        +boolean flight
+    }
+
+    class Task {
+        +string id
+        +string name
+        +PhaseType phaseType
+        +string~?~ relatedUnitPartNo
+        +string owner
+        +string~?~ dueDate
+        +string createdAt
+    }
+
+    class AitWork {
+        +string id
+        +string name
+        +AitWorkType type
+        +number order
+        +AitWorkStatus status
+        +string~?~ relatedUnitPartNo
+        +string~?~ plannedDate
+        +string~?~ actualDate
+        +string owner
+        +string remark
+    }
+
+    class SubsystemKitStatus {
+        +string subsystemPartNo
+        +string subsystemName
+        +int totalUnits
+        +int completeUnits
+        +number rate
+        +KitStatusType status
+    }
+
+    class ProjectMetrics {
+        +int totalMaterials
+        +number kitRate
+        +int productionCount
+        +int aitWorkCount
+    }
+
+    class DataService {
+        <<interface>>
+        +fetchBomTree() Promise~RawBomNode~
+        +fetchProject() Promise~Project~
+        +fetchAitWorks() Promise~AitWork[]~
+        +fetchTasks() Promise~Task[]~
+    }
+
+    class MockDataService {
+        -fetchBomJson() Promise~RawBomNode~
+        +fetchBomTree() Promise~RawBomNode~
+        +fetchProject() Promise~Project~
+        +fetchAitWorks() Promise~AitWork[]~
+        +fetchTasks() Promise~Task[]~
+    }
+
+    class BomStore {
+        +Project~?~ project
+        +boolean loading
+        +string~?~ error
+        +loadBom() Promise~void~
+        +updateUnit(partNo, updates) void
+        +getUnit(partNo) Unit~?~
+        +resetData() Promise~void~
+    }
+
+    class PhaseStore {
+        +PhaseType currentPhase
+        +Task[] tasks
+        +AitWork[] aitWorks
+        +setCurrentPhase(phase) void
+        +addTask(task) void
+        +removeTask(id) void
+        +addAitWork(work) void
+        +removeAitWork(id) void
+        +moveAitWork(id, status, index) void
+        +updateAitWork(id, updates) void
+    }
+
+    class UiStore {
+        +ThemeMode mode
+        +PageType currentPage
+        +string~?~ selectedNodePartNo
+        +Record~string,boolean~ expandedNodes
+        +KitFilter kitFilter
+        +toggleTheme() void
+        +setPage(page) void
+        +selectNode(partNo) void
+        +toggleNode(partNo) void
+        +setKitFilter(filter) void
+    }
+
+    class BomParser {
+        +parseBomTree(raw) Project
+        -parseSatellite(node) Satellite
+        -parseSubsystems(nodes) Subsystem[]
+        -parseUnits(nodes) Unit[]
+    }
+
+    class KitCalculator {
+        +calcSubsystemKit(subsystem, filter) SubsystemKitStatus
+        +calcAllKits(project, filter) SubsystemKitStatus[]
+        +calcProjectMetrics(project, aitWorks) ProjectMetrics
+    }
+
+    class SeedRandom {
+        +seededRandom(seed) Function
+    }
+
+    class RawBomNode {
+        +number level
+        +string part_no
+        +string name
+        +string~?~ spec
+        +string~?~ manufacturer
+        +string~?~ quantity
+        +RawBomNode[]~?~ children
+    }
+
+    RawBomNode ..> BomParser : parsed by
+    Project *-- Satellite : contains
+    Satellite *-- Subsystem : contains
+    Subsystem *-- Unit : contains
+    Unit *-- UnitStatus : has
+    DataService <|.. MockDataService : implements
+    MockDataService ..> BomParser : uses
+    MockDataService ..> SeedRandom : uses
+    BomStore ..> DataService : depends on
+    BomStore ..> Project : holds
+    PhaseStore ..> Task : holds
+    PhaseStore ..> AitWork : holds
+    KitCalculator ..> Project : reads
+    KitCalculator ..> SubsystemKitStatus : produces
+    KitCalculator ..> ProjectMetrics : produces
