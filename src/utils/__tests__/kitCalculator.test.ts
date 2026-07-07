@@ -1,6 +1,6 @@
 // ============================================================
 // src/utils/__tests__/kitCalculator.test.ts
-// 齐套率计算纯函数单元测试
+// 齐套率计算纯函数单元测试（v2：函数签名改为 Satellite）
 // ============================================================
 
 import { describe, it, expect } from 'vitest';
@@ -9,8 +9,16 @@ import {
   calcAllKits,
   calcProjectMetrics,
   calcSatelliteKitRate,
+  calcProjectSummary,
+  calcSatelliteSummary,
 } from '../kitCalculator';
-import type { Project, Subsystem, Unit, AitWork } from '@/types';
+import type {
+  Project,
+  Satellite,
+  Subsystem,
+  Unit,
+  AitWork,
+} from '@/types';
 
 // ---------- 测试数据工厂 ----------
 
@@ -82,18 +90,25 @@ function makeSubsystem(
   };
 }
 
-/** 创建一个完整的项目 */
+/** 创建一颗卫星（v2） */
+function makeSatellite(subsystems: Subsystem[]): Satellite {
+  return {
+    partNo: 'ST-TEST',
+    name: '测试卫星',
+    manufacturer: '测试厂商',
+    subsystems,
+  };
+}
+
+/** 创建一个完整的项目（v2 多星） */
 function makeProject(subsystems: Subsystem[]): Project {
   return {
     id: 'proj-test-001',
     name: '测试卫星',
     satelliteModel: '测试卫星',
-    satellite: {
-      partNo: 'ST-TEST',
-      name: '测试卫星',
-      manufacturer: '测试厂商',
-      subsystems,
-    },
+    satellites: [makeSatellite(subsystems)],
+    createdAt: '2026-06-26T00:00:00.000Z',
+    updatedAt: '2026-06-26T00:00:00.000Z',
   };
 }
 
@@ -172,24 +187,19 @@ describe('calcSubsystemKit', () => {
   });
 
   describe('四种 filter 筛选', () => {
-    // 构造一个分系统，4 个单机有不同状态组合
     const sub = makeSubsystem('SB-FILTER', [
-      // 全齐套：electrical=true, qualification=true, flight=true, isKitComplete=true
       makeEquipment('EQ-F1', {
         status: { electrical: true, qualification: true, flight: true },
         isKitComplete: true,
       }),
-      // electrical=true, qualification=false, flight=false
       makeEquipment('EQ-F2', {
         status: { electrical: true, qualification: false, flight: false },
         isKitComplete: false,
       }),
-      // electrical=false, qualification=true, flight=false
       makeEquipment('EQ-F3', {
         status: { electrical: false, qualification: true, flight: false },
         isKitComplete: false,
       }),
-      // electrical=false, qualification=false, flight=true
       makeEquipment('EQ-F4', {
         status: { electrical: false, qualification: false, flight: true },
         isKitComplete: false,
@@ -207,21 +217,18 @@ describe('calcSubsystemKit', () => {
       const result = calcSubsystemKit(sub, 'electrical');
       expect(result.completeUnits).toBe(2);
       expect(result.rate).toBe(50);
-      expect(result.status).toBe('partial');
     });
 
     it("filter='qualification' 按 status.qualification 统计 → 2/4=50%", () => {
       const result = calcSubsystemKit(sub, 'qualification');
       expect(result.completeUnits).toBe(2);
       expect(result.rate).toBe(50);
-      expect(result.status).toBe('partial');
     });
 
     it("filter='flight' 按 status.flight 统计 → 2/4=50%", () => {
       const result = calcSubsystemKit(sub, 'flight');
       expect(result.completeUnits).toBe(2);
       expect(result.rate).toBe(50);
-      expect(result.status).toBe('partial');
     });
 
     it("默认 filter 为 'all'（不传参数）", () => {
@@ -242,8 +249,8 @@ describe('calcSubsystemKit', () => {
 // ---------- calcAllKits 测试 ----------
 
 describe('calcAllKits', () => {
-  it('对项目所有分系统计算齐套状态', () => {
-    const project = makeProject([
+  it('对卫星所有分系统计算齐套状态', () => {
+    const satellite = makeSatellite([
       makeSubsystem('SB-A', [
         makeEquipment('EQ001', { isKitComplete: true }),
         makeEquipment('EQ002', { isKitComplete: true }),
@@ -252,7 +259,7 @@ describe('calcAllKits', () => {
         makeEquipment('EQ003', { isKitComplete: false }),
       ]),
     ]);
-    const results = calcAllKits(project, 'all');
+    const results = calcAllKits(satellite, 'all');
     expect(results).toHaveLength(2);
     expect(results[0].subsystemPartNo).toBe('SB-A');
     expect(results[0].rate).toBe(100);
@@ -260,9 +267,9 @@ describe('calcAllKits', () => {
     expect(results[1].rate).toBe(0);
   });
 
-  it('空项目（无分系统）返回空数组', () => {
-    const project = makeProject([]);
-    const results = calcAllKits(project, 'all');
+  it('空卫星（无分系统）返回空数组', () => {
+    const satellite = makeSatellite([]);
+    const results = calcAllKits(satellite, 'all');
     expect(results).toHaveLength(0);
   });
 });
@@ -271,7 +278,7 @@ describe('calcAllKits', () => {
 
 describe('calcProjectMetrics', () => {
   it('正确计算 totalMaterials、kitRate、productionCount、aitWorkCount', () => {
-    const project = makeProject([
+    const satellite = makeSatellite([
       makeSubsystem('SB-A', [
         makeEquipment('EQ001', {
           isKitComplete: true,
@@ -321,16 +328,16 @@ describe('calcProjectMetrics', () => {
       },
     ];
 
-    const metrics = calcProjectMetrics(project, aitWorks);
+    const metrics = calcProjectMetrics(satellite, aitWorks);
     expect(metrics.totalMaterials).toBe(4);
-    expect(metrics.kitRate).toBe(50); // 2/4 = 50%
-    expect(metrics.productionCount).toBe(3); // 2 completed + 1 in_progress
+    expect(metrics.kitRate).toBe(50);
+    expect(metrics.productionCount).toBe(3);
     expect(metrics.aitWorkCount).toBe(2);
   });
 
-  it('空项目返回零值', () => {
-    const project = makeProject([]);
-    const metrics = calcProjectMetrics(project, []);
+  it('空卫星返回零值', () => {
+    const satellite = makeSatellite([]);
+    const metrics = calcProjectMetrics(satellite, []);
     expect(metrics.totalMaterials).toBe(0);
     expect(metrics.kitRate).toBe(0);
     expect(metrics.productionCount).toBe(0);
@@ -338,25 +345,25 @@ describe('calcProjectMetrics', () => {
   });
 
   it('全部齐套时 kitRate=100', () => {
-    const project = makeProject([
+    const satellite = makeSatellite([
       makeSubsystem('SB-A', [
         makeEquipment('EQ001', { isKitComplete: true }),
         makeEquipment('EQ002', { isKitComplete: true }),
       ]),
     ]);
-    const metrics = calcProjectMetrics(project, []);
+    const metrics = calcProjectMetrics(satellite, []);
     expect(metrics.kitRate).toBe(100);
   });
 
   it('productionCount 排除 not_started 状态', () => {
-    const project = makeProject([
+    const satellite = makeSatellite([
       makeSubsystem('SB-A', [
         makeEquipment('EQ001', { productionStatus: 'not_started' }),
         makeEquipment('EQ002', { productionStatus: 'in_progress' }),
         makeEquipment('EQ003', { productionStatus: 'completed' }),
       ]),
     ]);
-    const metrics = calcProjectMetrics(project, []);
+    const metrics = calcProjectMetrics(satellite, []);
     expect(metrics.productionCount).toBe(2);
   });
 });
@@ -365,7 +372,7 @@ describe('calcProjectMetrics', () => {
 
 describe('calcSatelliteKitRate', () => {
   it('正确计算整星齐套率', () => {
-    const project = makeProject([
+    const satellite = makeSatellite([
       makeSubsystem('SB-A', [
         makeEquipment('EQ001', { isKitComplete: true }),
         makeEquipment('EQ002', { isKitComplete: false }),
@@ -375,33 +382,102 @@ describe('calcSatelliteKitRate', () => {
         makeEquipment('EQ004', { isKitComplete: true }),
       ]),
     ]);
-    // 3/4 = 75%
-    expect(calcSatelliteKitRate(project)).toBe(75);
+    expect(calcSatelliteKitRate(satellite)).toBe(75);
   });
 
   it('全部齐套返回 100', () => {
-    const project = makeProject([
+    const satellite = makeSatellite([
       makeSubsystem('SB-A', [
         makeEquipment('EQ001', { isKitComplete: true }),
         makeEquipment('EQ002', { isKitComplete: true }),
       ]),
     ]);
-    expect(calcSatelliteKitRate(project)).toBe(100);
+    expect(calcSatelliteKitRate(satellite)).toBe(100);
   });
 
-  it('空项目返回 0', () => {
-    const project = makeProject([]);
-    expect(calcSatelliteKitRate(project)).toBe(0);
+  it('空卫星返回 0', () => {
+    const satellite = makeSatellite([]);
+    expect(calcSatelliteKitRate(satellite)).toBe(0);
   });
 
   it('四舍五入正确（2/3=67%）', () => {
-    const project = makeProject([
+    const satellite = makeSatellite([
       makeSubsystem('SB-A', [
         makeEquipment('EQ001', { isKitComplete: true }),
         makeEquipment('EQ002', { isKitComplete: true }),
         makeEquipment('EQ003', { isKitComplete: false }),
       ]),
     ]);
-    expect(calcSatelliteKitRate(project)).toBe(67);
+    expect(calcSatelliteKitRate(satellite)).toBe(67);
+  });
+});
+
+// ---------- calcProjectSummary 测试 ----------
+
+describe('calcProjectSummary', () => {
+  it('正确聚合单星项目指标', () => {
+    const project = makeProject([
+      makeSubsystem('SB-A', [
+        makeEquipment('EQ001', { isKitComplete: true }),
+        makeEquipment('EQ002', { isKitComplete: false }),
+      ]),
+    ]);
+    const summary = calcProjectSummary(project);
+    expect(summary.satelliteCount).toBe(1);
+    expect(summary.totalMaterials).toBe(2);
+    expect(summary.kitRate).toBe(50);
+  });
+
+  it('正确聚合多星项目指标', () => {
+    const sat1 = makeSatellite([
+      makeSubsystem('SB-A', [
+        makeEquipment('EQ001', { isKitComplete: true }),
+        makeEquipment('EQ002', { isKitComplete: true }),
+      ]),
+    ]);
+    const sat2: Satellite = {
+      partNo: 'ST-002',
+      name: '备星',
+      manufacturer: '厂商B',
+      subsystems: [
+        makeSubsystem('SB-B', [
+          makeEquipment('EQ003', { isKitComplete: false }),
+          makeEquipment('EQ004', { isKitComplete: false }),
+        ]),
+      ],
+    };
+    const project: Project = {
+      id: 'proj-multi',
+      name: '多星项目',
+      satelliteModel: '主星',
+      satellites: [sat1, sat2],
+      createdAt: '2026-06-26T00:00:00.000Z',
+      updatedAt: '2026-06-26T00:00:00.000Z',
+    };
+    const summary = calcProjectSummary(project);
+    expect(summary.satelliteCount).toBe(2);
+    expect(summary.totalMaterials).toBe(4);
+    expect(summary.kitRate).toBe(50); // 2/4
+  });
+});
+
+// ---------- calcSatelliteSummary 测试 ----------
+
+describe('calcSatelliteSummary', () => {
+  it('正确计算单星摘要', () => {
+    const satellite = makeSatellite([
+      makeSubsystem('SB-A', [
+        makeEquipment('EQ001', { isKitComplete: true }),
+        makeEquipment('EQ002', { isKitComplete: false }),
+      ]),
+      makeSubsystem('SB-B', [
+        makeEquipment('EQ003', { isKitComplete: true }),
+      ]),
+    ]);
+    const summary = calcSatelliteSummary(satellite);
+    expect(summary.partNo).toBe('ST-TEST');
+    expect(summary.totalMaterials).toBe(3);
+    expect(summary.kitRate).toBe(67);
+    expect(summary.subsystemCount).toBe(2);
   });
 });

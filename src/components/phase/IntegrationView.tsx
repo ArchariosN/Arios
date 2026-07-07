@@ -1,5 +1,5 @@
 // ============================================================
-// src/components/phase/IntegrationView.tsx — 联试阶段视图
+// src/components/phase/IntegrationView.tsx — 联试阶段视图（v2 多星作用域）
 // 正样件/电性件单机交付状态列表
 // ============================================================
 
@@ -33,13 +33,13 @@ function getDeliveryStatus(
 }
 
 export default function IntegrationView(): React.ReactElement {
-  const project = useBomStore((s) => s.project);
+  const currentSatellite = useBomStore((s) => s.getCurrentSatellite());
 
   // 筛选含正样件或电性件的单机
   const unitsWithSub = useMemo(() => {
-    if (!project) return [];
+    if (!currentSatellite) return [];
     const list: { unit: Unit; subsystemName: string }[] = [];
-    for (const sub of project.satellite.subsystems) {
+    for (const sub of currentSatellite.subsystems) {
       for (const unit of sub.units) {
         if (unit.type === 'equipment' && (unit.status.flight || unit.status.electrical)) {
           list.push({ unit, subsystemName: sub.name });
@@ -47,7 +47,7 @@ export default function IntegrationView(): React.ReactElement {
       }
     }
     return list;
-  }, [project]);
+  }, [currentSatellite]);
 
   if (unitsWithSub.length === 0) {
     return (

@@ -1,5 +1,5 @@
 // ============================================================
-// src/components/ait/AitKanban.tsx — AIT 拖拽看板
+// src/components/ait/AitKanban.tsx — AIT 拖拽看板（v2 多星作用域）
 // 三列（待开始/进行中/已完成）+ DndContext
 // ============================================================
 
@@ -13,6 +13,7 @@ import {
   Grid,
   useTheme,
   useMediaQuery,
+  CircularProgress,
 } from '@mui/material';
 import { Add as AddIcon } from '@mui/icons-material';
 import {
@@ -33,6 +34,7 @@ import { useDroppable } from '@dnd-kit/core';
 import AitCard from './AitCard';
 import AitAddDialog from './AitAddDialog';
 import { usePhaseStore } from '@/store/usePhaseStore';
+import { useBomStore } from '@/store/useBomStore';
 import type { AitWork, AitWorkStatus } from '@/types';
 import { AIT_WORK_PRESETS } from '@/types';
 
@@ -126,7 +128,10 @@ function DroppableColumn({
 export default function AitKanban(): React.ReactElement {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const aitWorks = usePhaseStore((s) => s.aitWorks);
+  const currentSatellitePartNo = useBomStore((s) => s.currentSatellitePartNo);
+  const aitWorks = usePhaseStore((s) =>
+    currentSatellitePartNo ? s.getAitWorks(currentSatellitePartNo) : [],
+  );
   const moveAitWork = usePhaseStore((s) => s.moveAitWork);
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -148,7 +153,6 @@ export default function AitKanban(): React.ReactElement {
     for (const work of aitWorks) {
       groups[work.status].push(work);
     }
-    // 按 order 排序
     (Object.keys(groups) as AitWorkStatus[]).forEach((key) => {
       groups[key].sort((a, b) => a.order - b.order);
     });
@@ -163,25 +167,21 @@ export default function AitKanban(): React.ReactElement {
   const handleDragEnd = (event: DragEndEvent): void => {
     setActiveWork(null);
     const { active, over } = event;
-    if (!over) return;
+    if (!over || !currentSatellitePartNo) return;
 
     const activeId = active.id as string;
     const overId = over.id as string;
 
-    // 找到被拖拽的 work
     const work = aitWorks.find((w) => w.id === activeId);
     if (!work) return;
 
-    // 判断目标列
     let toStatus: AitWorkStatus;
     let toIndex: number;
 
     if (overId.startsWith('col-')) {
-      // 拖到空白区域（列容器）
       toStatus = overId.replace('col-', '') as AitWorkStatus;
       toIndex = worksByStatus[toStatus].length;
     } else {
-      // 拖到某个卡片上
       const overWork = aitWorks.find((w) => w.id === overId);
       if (!overWork) return;
       toStatus = overWork.status;
@@ -189,14 +189,21 @@ export default function AitKanban(): React.ReactElement {
       const targetList = worksByStatus[toStatus];
       const overIndex = targetList.findIndex((w) => w.id === overId);
 
-      // 同列同位置不动
       if (work.status === toStatus && work.id === overId) return;
 
       toIndex = overIndex;
     }
 
-    moveAitWork(activeId, toStatus, toIndex);
+    moveAitWork(currentSatellitePartNo, activeId, toStatus, toIndex);
   };
+
+  if (!currentSatellitePartNo) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+        {useBomStore.getState().loading ? <CircularProgress /> : <Typography color="text.secondary">暂无卫星数据</Typography>}
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>

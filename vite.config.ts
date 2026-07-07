@@ -10,9 +10,6 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
     },
   },
-  esbuild: {
-    legalComments: 'none',
-  },
   server: {
     port: 5173,
     open: true,
@@ -30,6 +27,7 @@ export default defineConfig({
           'mui-vendor': ['@mui/material', '@mui/icons-material'],
           'recharts-vendor': ['recharts'],
           'dnd-vendor': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
+          'xlsx-vendor': ['xlsx'],
         },
       },
     },

@@ -1,6 +1,7 @@
 // ============================================================
-// src/store/usePhaseStore.ts — 阶段状态管理
+// src/store/usePhaseStore.ts — 阶段状态管理（v2 按卫星作用域）
 // 职责：当前阶段 + 临时任务 + AIT 工作项 CRUD + 拖拽排序
+// v2: tasks/aitWorks 改为 Record<string, T> 按 satellitePartNo 分组
 // ============================================================
 
 import { create } from 'zustand';
@@ -13,57 +14,88 @@ import type {
 } from '@/types';
 import { dataService } from '@/services/MockDataService';
 
-interface PhaseState {
-  /** 当前阶段 */
-  currentPhase: PhaseType;
-  /** 临时任务列表 */
-  tasks: Task[];
-  /** AIT 工作项列表 */
-  aitWorks: AitWork[];
-  /** 标记是否已初始化 */
-  initialized: boolean;
-
-  /** 初始化数据（首次加载预置任务和 AIT 工作项） */
-  initPhaseData: () => Promise<void>;
-  /** 切换当前阶段 */
-  setCurrentPhase: (phase: PhaseType) => void;
-  /** 添加临时任务 */
-  addTask: (task: Omit<Task, 'id'>) => void;
-  /** 删除临时任务 */
-  removeTask: (taskId: string) => void;
-  /** 添加 AIT 工作项 */
-  addAitWork: (work: Omit<AitWork, 'id'>) => void;
-  /** 删除 AIT 工作项 */
-  removeAitWork: (workId: string) => void;
-  /** 移动 AIT 工作项（跨列变更状态 + 列内排序） */
-  moveAitWork: (workId: string, toStatus: AitWorkStatus, toIndex: number) => void;
-  /** 更新 AIT 工作项属性 */
-  updateAitWork: (workId: string, updates: Partial<AitWork>) => void;
-}
-
 /** 生成唯一 ID */
 function genId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+interface PhaseState {
+  /** 当前阶段（项目级共享） */
+  currentPhase: PhaseType;
+  /** [v2] tasks 按 satellitePartNo 分组存储 */
+  tasksBySatellite: Record<string, Task[]>;
+  /** [v2] aitWorks 按 satellitePartNo 分组存储 */
+  aitWorksBySatellite: Record<string, AitWork[]>;
+  /** [v2] 已初始化的卫星 partNo 集合（序列化为数组） */
+  initializedSatellites: string[];
+
+  /** [v2] 初始化指定卫星的阶段数据 */
+  initSatellitePhaseData: (satellitePartNo: string) => Promise<void>;
+  /** 切换当前阶段 */
+  setCurrentPhase: (phase: PhaseType) => void;
+
+  /** [v2] 获取当前卫星的任务列表 */
+  getTasks: (satellitePartNo: string) => Task[];
+  /** [v2] 获取当前卫星的 AIT 工作项 */
+  getAitWorks: (satellitePartNo: string) => AitWork[];
+
+  /** [v2] 添加临时任务（带卫星作用域） */
+  addTask: (satellitePartNo: string, task: Omit<Task, 'id'>) => void;
+  /** [v2] 删除临时任务（带卫星作用域） */
+  removeTask: (satellitePartNo: string, taskId: string) => void;
+
+  /** [v2] 添加 AIT 工作项（带卫星作用域） */
+  addAitWork: (satellitePartNo: string, work: Omit<AitWork, 'id'>) => void;
+  /** [v2] 删除 AIT 工作项（带卫星作用域） */
+  removeAitWork: (satellitePartNo: string, workId: string) => void;
+  /** [v2] 移动 AIT 工作项（带卫星作用域） */
+  moveAitWork: (
+    satellitePartNo: string,
+    workId: string,
+    toStatus: AitWorkStatus,
+    toIndex: number,
+  ) => void;
+  /** [v2] 更新 AIT 工作项属性（带卫星作用域） */
+  updateAitWork: (
+    satellitePartNo: string,
+    workId: string,
+    updates: Partial<AitWork>,
+  ) => void;
 }
 
 export const usePhaseStore = create<PhaseState>()(
   persist(
     (set, get) => ({
       currentPhase: 'design',
-      tasks: [],
-      aitWorks: [],
-      initialized: false,
+      tasksBySatellite: {},
+      aitWorksBySatellite: {},
+      initializedSatellites: [],
 
-      initPhaseData: async (): Promise<void> => {
-        if (get().initialized) return;
+      initSatellitePhaseData: async (satellitePartNo: string): Promise<void> => {
+        const state = get();
+        if (state.initializedSatellites.includes(satellitePartNo)) return;
+
         try {
           const [tasks, aitWorks] = await Promise.all([
-            dataService.fetchTasks(),
-            dataService.fetchAitWorks(),
+            dataService.fetchTasks(satellitePartNo),
+            dataService.fetchAitWorks(satellitePartNo),
           ]);
-          set({ tasks, aitWorks, initialized: true });
+          set((s) => ({
+            tasksBySatellite: {
+              ...s.tasksBySatellite,
+              [satellitePartNo]: tasks,
+            },
+            aitWorksBySatellite: {
+              ...s.aitWorksBySatellite,
+              [satellitePartNo]: aitWorks,
+            },
+            initializedSatellites: [...s.initializedSatellites, satellitePartNo],
+          }));
         } catch {
-          set({ initialized: true });
+          // 初始化失败也标记，避免无限重试
+          set((s) => ({
+            initializedSatellites: [...s.initializedSatellites, satellitePartNo],
+          }));
         }
       },
 
@@ -71,23 +103,43 @@ export const usePhaseStore = create<PhaseState>()(
         set({ currentPhase: phase });
       },
 
-      addTask: (task): void => {
-        set((state) => ({
-          tasks: [...state.tasks, { ...task, id: genId('task') }],
-        }));
+      getTasks: (satellitePartNo: string): Task[] => {
+        return get().tasksBySatellite[satellitePartNo] ?? [];
       },
 
-      removeTask: (taskId): void => {
-        set((state) => ({
-          tasks: state.tasks.filter((t) => t.id !== taskId),
-        }));
+      getAitWorks: (satellitePartNo: string): AitWork[] => {
+        return get().aitWorksBySatellite[satellitePartNo] ?? [];
       },
 
-      addAitWork: (work): void => {
+      addTask: (satellitePartNo, task): void => {
         set((state) => {
+          const existing = state.tasksBySatellite[satellitePartNo] ?? [];
+          return {
+            tasksBySatellite: {
+              ...state.tasksBySatellite,
+              [satellitePartNo]: [...existing, { ...task, id: genId('task') }],
+            },
+          };
+        });
+      },
+
+      removeTask: (satellitePartNo, taskId): void => {
+        set((state) => {
+          const existing = state.tasksBySatellite[satellitePartNo] ?? [];
+          return {
+            tasksBySatellite: {
+              ...state.tasksBySatellite,
+              [satellitePartNo]: existing.filter((t) => t.id !== taskId),
+            },
+          };
+        });
+      },
+
+      addAitWork: (satellitePartNo, work): void => {
+        set((state) => {
+          const existing = state.aitWorksBySatellite[satellitePartNo] ?? [];
           const newWork: AitWork = { ...work, id: genId('ait') };
-          // 新增工作放入对应状态列末尾，order 为该列最大 order + 1
-          const sameStatusWorks = state.aitWorks.filter(
+          const sameStatusWorks = existing.filter(
             (w) => w.status === newWork.status,
           );
           const maxOrder = sameStatusWorks.reduce(
@@ -95,62 +147,92 @@ export const usePhaseStore = create<PhaseState>()(
             -1,
           );
           newWork.order = maxOrder + 1;
-          return { aitWorks: [...state.aitWorks, newWork] };
+          return {
+            aitWorksBySatellite: {
+              ...state.aitWorksBySatellite,
+              [satellitePartNo]: [...existing, newWork],
+            },
+          };
         });
       },
 
-      removeAitWork: (workId): void => {
-        set((state) => ({
-          aitWorks: state.aitWorks.filter((w) => w.id !== workId),
-        }));
+      removeAitWork: (satellitePartNo, workId): void => {
+        set((state) => {
+          const existing = state.aitWorksBySatellite[satellitePartNo] ?? [];
+          return {
+            aitWorksBySatellite: {
+              ...state.aitWorksBySatellite,
+              [satellitePartNo]: existing.filter((w) => w.id !== workId),
+            },
+          };
+        });
       },
 
-      moveAitWork: (workId, toStatus, toIndex): void => {
+      moveAitWork: (satellitePartNo, workId, toStatus, toIndex): void => {
         set((state) => {
-          const work = state.aitWorks.find((w) => w.id === workId);
+          const existing = state.aitWorksBySatellite[satellitePartNo] ?? [];
+          const work = existing.find((w) => w.id === workId);
           if (!work) return state;
 
-          // 移除被拖拽的 work
-          const remaining = state.aitWorks.filter((w) => w.id !== workId);
-
-          // 目标列中已有的 works（排除被拖拽项后）
+          const remaining = existing.filter((w) => w.id !== workId);
           const targetCol = remaining
             .filter((w) => w.status === toStatus)
             .sort((a, b) => a.order - b.order);
 
-          // 更新被拖拽 work 的 status
           const movedWork: AitWork = { ...work, status: toStatus };
-
-          // 插入到目标位置
           targetCol.splice(toIndex, 0, movedWork);
-
-          // 重新计算目标列 order（从 0 开始）
           const updatedTargetCol = targetCol.map((w, i) => ({
             ...w,
             order: i,
           }));
 
-          // 其他列保持不变
           const otherCols = remaining.filter(
-            (w) => w.status !== toStatus || w.id === workId,
-          ).filter((w) => w.status !== toStatus);
+            (w) => w.status !== toStatus,
+          );
 
           return {
-            aitWorks: [...otherCols, ...updatedTargetCol],
+            aitWorksBySatellite: {
+              ...state.aitWorksBySatellite,
+              [satellitePartNo]: [...otherCols, ...updatedTargetCol],
+            },
           };
         });
       },
 
-      updateAitWork: (workId, updates): void => {
-        set((state) => ({
-          aitWorks: state.aitWorks.map((w) =>
-            w.id === workId ? { ...w, ...updates } : w,
-          ),
-        }));
+      updateAitWork: (satellitePartNo, workId, updates): void => {
+        set((state) => {
+          const existing = state.aitWorksBySatellite[satellitePartNo] ?? [];
+          return {
+            aitWorksBySatellite: {
+              ...state.aitWorksBySatellite,
+              [satellitePartNo]: existing.map((w) =>
+                w.id === workId ? { ...w, ...updates } : w,
+              ),
+            },
+          };
+        });
       },
     }),
     {
       name: 'phase-storage',
+      version: 2,
+      partialize: (s) => ({
+        currentPhase: s.currentPhase,
+        tasksBySatellite: s.tasksBySatellite,
+        aitWorksBySatellite: s.aitWorksBySatellite,
+        initializedSatellites: s.initializedSatellites,
+      }),
+      migrate: (persistedState: unknown, version: number) => {
+        if (version < 2) {
+          return {
+            currentPhase: 'design' as PhaseType,
+            tasksBySatellite: {},
+            aitWorksBySatellite: {},
+            initializedSatellites: [],
+          };
+        }
+        return persistedState as Partial<PhaseState>;
+      },
     },
   ),
 );

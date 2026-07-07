@@ -1,5 +1,5 @@
 // ============================================================
-// src/components/kitboard/KitBoard.tsx — 齐套看板页
+// src/components/kitboard/KitBoard.tsx — 齐套看板页（v2 多星作用域）
 // 筛选栏 + 分系统卡片网格 + 下钻明细
 // ============================================================
 
@@ -16,6 +16,7 @@ import {
   CardContent,
   Typography,
   IconButton,
+  CircularProgress,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -36,7 +37,8 @@ const FILTER_OPTIONS: { value: KitFilter; label: string }[] = [
 ];
 
 export default function KitBoard(): React.ReactElement {
-  const project = useBomStore((s) => s.project);
+  const currentSatellite = useBomStore((s) => s.getCurrentSatellite());
+  const loading = useBomStore((s) => s.loading);
   const kitFilter = useUiStore((s) => s.kitFilter);
   const setKitFilter = useUiStore((s) => s.setKitFilter);
 
@@ -45,15 +47,15 @@ export default function KitBoard(): React.ReactElement {
     null,
   );
 
-  if (!project) {
+  if (loading || !currentSatellite) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-        <Typography color="text.secondary">暂无数据</Typography>
+        {loading ? <CircularProgress /> : <Typography color="text.secondary">暂无卫星数据</Typography>}
       </Box>
     );
   }
 
-  const filteredSubsystems = project.satellite.subsystems.filter(
+  const filteredSubsystems = currentSatellite.subsystems.filter(
     (sub) =>
       !searchQuery ||
       sub.partNo.toLowerCase().includes(searchQuery.toLowerCase()) ||

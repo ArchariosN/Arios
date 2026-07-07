@@ -1,5 +1,5 @@
 // ============================================================
-// src/components/ait/AitCard.tsx — 可拖拽工作卡片
+// src/components/ait/AitCard.tsx — 可拖拽工作卡片（v2 多星作用域）
 // 使用 useSortable 实现拖拽
 // ============================================================
 
@@ -18,7 +18,8 @@ interface AitCardProps {
 
 export default function AitCard({ work }: AitCardProps): React.ReactElement {
   const removeAitWork = usePhaseStore((s) => s.removeAitWork);
-  const project = useBomStore((s) => s.project);
+  const currentSatellitePartNo = useBomStore((s) => s.currentSatellitePartNo);
+  const currentSatellite = useBomStore((s) => s.getCurrentSatellite());
 
   const {
     attributes,
@@ -31,8 +32,8 @@ export default function AitCard({ work }: AitCardProps): React.ReactElement {
 
   // 查找关联单机名称
   let relatedUnitName = '整星';
-  if (work.relatedUnitPartNo && project) {
-    for (const sub of project.satellite.subsystems) {
+  if (work.relatedUnitPartNo && currentSatellite) {
+    for (const sub of currentSatellite.subsystems) {
       const unit = sub.units.find((u) => u.partNo === work.relatedUnitPartNo);
       if (unit) {
         relatedUnitName = unit.name;
@@ -40,6 +41,12 @@ export default function AitCard({ work }: AitCardProps): React.ReactElement {
       }
     }
   }
+
+  const handleDelete = (): void => {
+    if (currentSatellitePartNo) {
+      removeAitWork(currentSatellitePartNo, work.id);
+    }
+  };
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -111,7 +118,7 @@ export default function AitCard({ work }: AitCardProps): React.ReactElement {
 
           <IconButton
             size="small"
-            onClick={() => removeAitWork(work.id)}
+            onClick={handleDelete}
             sx={{ p: 0.25 }}
           >
             <DeleteIcon fontSize="small" />

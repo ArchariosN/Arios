@@ -1,6 +1,6 @@
 // ============================================================
-// src/components/layout/Header.tsx — 顶栏
-// 项目名 + 日夜切换 + 移动端汉堡菜单 + 重置数据
+// src/components/layout/Header.tsx — 顶栏（v2 动态标题）
+// 标题动态显示当前项目名或系统名 + 日夜切换 + 移动端汉堡 + 重置
 // ============================================================
 
 import {
@@ -30,14 +30,20 @@ export default function Header(): React.ReactElement {
   const mode = useUiStore((s) => s.mode);
   const toggleTheme = useUiStore((s) => s.toggleTheme);
   const toggleMobileDrawer = useUiStore((s) => s.toggleMobileDrawer);
-  const resetData = useBomStore((s) => s.resetData);
+  const resetAll = useBomStore((s) => s.resetAll);
+  const currentProject = useBomStore((s) => s.getCurrentProject());
 
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
 
   const handleReset = (): void => {
     setMenuAnchor(null);
-    resetData();
+    resetAll();
   };
+
+  // 动态标题：未选项目 → 系统名；已选项目 → 项目名
+  const title = currentProject
+    ? currentProject.name
+    : '卫星制造项目管理系统';
 
   return (
     <AppBar position="sticky" elevation={0}>
@@ -63,7 +69,7 @@ export default function Header(): React.ReactElement {
               letterSpacing: '-0.01em',
             }}
           >
-            灵犀10B 卫星制造管理系统
+            {title}
           </Typography>
         </Box>
 
@@ -92,7 +98,7 @@ export default function Header(): React.ReactElement {
             <ListItemIcon>
               <Refresh fontSize="small" />
             </ListItemIcon>
-            <ListItemText>重置数据</ListItemText>
+            <ListItemText>重置全部数据</ListItemText>
           </MenuItem>
         </Menu>
       </Toolbar>

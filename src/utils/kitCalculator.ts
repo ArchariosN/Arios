@@ -1,15 +1,18 @@
 // ============================================================
 // src/utils/kitCalculator.ts — 齐套率计算纯函数
-// 不存储齐套率，由 BOM 数据实时派生，避免双源不一致。
+// v2: 函数签名改为接收 Satellite（单星），新增项目级聚合
 // ============================================================
 
 import type {
   Project,
+  Satellite,
   Subsystem,
   SubsystemKitStatus,
   KitStatusType,
   KitFilter,
   ProjectMetrics,
+  ProjectSummary,
+  SatelliteSummary,
   AitWork,
 } from '@/types';
 
@@ -68,37 +71,37 @@ export function calcSubsystemKit(
 }
 
 /**
- * 计算项目所有分系统的齐套状态。
+ * 计算单颗卫星所有分系统的齐套状态（v2：接收 Satellite）。
  *
- * @param project - 项目领域模型
+ * @param satellite - 卫星领域模型
  * @param filter - 齐套筛选维度
  * @returns 所有分系统的齐套状态数组
  */
 export function calcAllKits(
-  project: Project,
+  satellite: Satellite,
   filter: KitFilter = 'all',
 ): SubsystemKitStatus[] {
-  return project.satellite.subsystems.map((sub) =>
+  return satellite.subsystems.map((sub) =>
     calcSubsystemKit(sub, filter),
   );
 }
 
 /**
- * 计算项目总览指标。
+ * 计算单颗卫星的总览指标（v2：接收 Satellite）。
  *
- * @param project - 项目领域模型
+ * @param satellite - 卫星领域模型
  * @param aitWorks - AIT 工作项列表
- * @returns 项目总览指标
+ * @returns 卫星总览指标
  */
 export function calcProjectMetrics(
-  project: Project,
+  satellite: Satellite,
   aitWorks: AitWork[],
 ): ProjectMetrics {
   let totalMaterials = 0;
   let kitCompleteCount = 0;
   let productionCount = 0;
 
-  for (const sub of project.satellite.subsystems) {
+  for (const sub of satellite.subsystems) {
     for (const unit of sub.units) {
       totalMaterials++;
       if (unit.isKitComplete) kitCompleteCount++;
@@ -120,16 +123,84 @@ export function calcProjectMetrics(
 }
 
 /**
- * 计算整星齐套率（所有单机/零部件的总体齐套率）。
+ * 计算单颗卫星的齐套率（v2：接收 Satellite）。
  */
-export function calcSatelliteKitRate(project: Project): number {
+export function calcSatelliteKitRate(satellite: Satellite): number {
   let total = 0;
   let complete = 0;
-  for (const sub of project.satellite.subsystems) {
+  for (const sub of satellite.subsystems) {
     for (const unit of sub.units) {
       total++;
       if (unit.isKitComplete) complete++;
     }
   }
   return total === 0 ? 0 : Math.round((complete / total) * 100);
+}
+
+/**
+ * 计算项目摘要（v2 新增）：聚合所有卫星的指标。
+ *
+ * @param project - 项目领域模型
+ * @returns 项目摘要
+ */
+export function calcProjectSummary(project: Project): ProjectSummary {
+  let totalMaterials = 0;
+  let kitCompleteCount = 0;
+
+  for (const sat of project.satellites) {
+    for (const sub of sat.subsystems) {
+      for (const unit of sub.units) {
+        totalMaterials++;
+        if (unit.isKitComplete) kitCompleteCount++;
+      }
+    }
+  }
+
+  const kitRate =
+    totalMaterials === 0
+      ? 0
+      : Math.round((kitCompleteCount / totalMaterials) * 100);
+
+  return {
+    id: project.id,
+    name: project.name,
+    satelliteModel: project.satelliteModel,
+    satelliteCount: project.satellites.length,
+    totalMaterials,
+    kitRate,
+    updatedAt: project.updatedAt,
+  };
+}
+
+/**
+ * 计算单颗卫星摘要（v2 新增）。
+ *
+ * @param satellite - 卫星领域模型
+ * @returns 卫星摘要
+ */
+export function calcSatelliteSummary(
+  satellite: Satellite,
+): SatelliteSummary {
+  let totalMaterials = 0;
+  let kitCompleteCount = 0;
+
+  for (const sub of satellite.subsystems) {
+    for (const unit of sub.units) {
+      totalMaterials++;
+      if (unit.isKitComplete) kitCompleteCount++;
+    }
+  }
+
+  const kitRate =
+    totalMaterials === 0
+      ? 0
+      : Math.round((kitCompleteCount / totalMaterials) * 100);
+
+  return {
+    partNo: satellite.partNo,
+    name: satellite.name,
+    totalMaterials,
+    kitRate,
+    subsystemCount: satellite.subsystems.length,
+  };
 }

@@ -1,5 +1,6 @@
 // ============================================================
 // src/utils/bomParser.ts — 将 RawBomNode（JSON）解析为 Project 领域模型
+// v2: 去硬编码，支持多星解析，项目名运行时传入
 // ============================================================
 
 import type {
@@ -12,6 +13,11 @@ import type {
   ProductionStatus,
 } from '@/types';
 import { seededRandom, randInt } from './seedRandom';
+
+/** 生成唯一 ID */
+function genId(prefix: string): string {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 /**
  * 生成 2026-07-01 到 2026-10-31 范围内的随机日期（ISO 字符串）。
@@ -66,6 +72,7 @@ function parseUnit(node: RawBomNode): Unit {
       ? 'part'
       : 'equipment';
 
+  // 以 partNo + 卫星前缀为种子，确保不同卫星间可重现
   const rng = seededRandom(partNo);
 
   // PT 零部件不做三状态管理
@@ -99,7 +106,7 @@ function parseUnit(node: RawBomNode): Unit {
     spec: node.spec || '',
     manufacturer: node.manufacturer || '',
     qualityLevel: node.quality_level || '',
-    form: node.form || '',
+    form: node.form || node.package || '',
     quantity: parseInt(node.quantity || '1', 10) || 1,
     location: node.location || '',
     unit: node.unit || '',
@@ -136,33 +143,41 @@ function parseSatellite(node: RawBomNode): Satellite {
 }
 
 /**
- * 将原始 BOM JSON 树解析为 Project 领域模型。
+ * 将原始 BOM JSON 树解析为 Project 领域模型（v2 多星版）。
  *
  * 层级映射：
  * - level 0 (ROOT) → Project
- * - level 1 (ST) → Satellite
+ * - level 1 (ST) → Satellite（支持多个，组装为 satellites[]）
  * - level 2 (SB) → Subsystem[]
  * - level 3 (EQ or PT) → Unit[]
  *
  * @param raw - 原始 BOM JSON 根节点
- * @returns 完整的 Project 领域模型
+ * @param projectName - 项目名称（可选，默认使用 raw.name）
+ * @returns 完整的 Project 领域模型（含 satellites 数组）
  */
-export function parseBomTree(raw: RawBomNode): Project {
-  // level 0 = ROOT → Project
-  const satelliteNode = (raw.children || []).find(
+export function parseBomTree(
+  raw: RawBomNode,
+  projectName?: string,
+): Project {
+  // 收集所有 level 1 节点（多星支持）
+  const satelliteNodes = (raw.children || []).filter(
     (c) => c.level === 1,
   );
 
-  if (!satelliteNode) {
+  if (satelliteNodes.length === 0) {
     throw new Error('BOM 数据中未找到整星节点（level 1）');
   }
 
-  const satellite = parseSatellite(satelliteNode);
+  const satellites = satelliteNodes.map(parseSatellite);
+  const name = projectName || raw.name || '未命名项目';
+  const now = new Date().toISOString();
 
   return {
-    id: 'proj-lx10b-001',
-    name: raw.name || '灵犀10B',
-    satelliteModel: satellite.name,
-    satellite,
+    id: genId('proj'),
+    name,
+    satelliteModel: satellites[0]?.name ?? name,
+    satellites,
+    createdAt: now,
+    updatedAt: now,
   };
 }

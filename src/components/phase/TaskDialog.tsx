@@ -1,5 +1,5 @@
 // ============================================================
-// src/components/phase/TaskDialog.tsx — 临时任务新增弹窗
+// src/components/phase/TaskDialog.tsx — 临时任务新增弹窗（v2 多星作用域）
 // 任务名/关联单机/负责人/截止日期
 // ============================================================
 
@@ -31,7 +31,8 @@ export default function TaskDialog({
   phaseType,
 }: TaskDialogProps): React.ReactElement {
   const addTask = usePhaseStore((s) => s.addTask);
-  const project = useBomStore((s) => s.project);
+  const currentSatellite = useBomStore((s) => s.getCurrentSatellite());
+  const currentSatellitePartNo = useBomStore((s) => s.currentSatellitePartNo);
 
   const [name, setName] = useState('');
   const [relatedUnitPartNo, setRelatedUnitPartNo] = useState('');
@@ -50,9 +51,9 @@ export default function TaskDialog({
 
   // 收集所有 EQ 单机供选择
   const equipmentOptions = useMemo(() => {
-    if (!project) return [];
+    if (!currentSatellite) return [];
     const list: { partNo: string; label: string }[] = [];
-    for (const sub of project.satellite.subsystems) {
+    for (const sub of currentSatellite.subsystems) {
       for (const unit of sub.units) {
         if (unit.type === 'equipment') {
           list.push({
@@ -63,11 +64,11 @@ export default function TaskDialog({
       }
     }
     return list;
-  }, [project]);
+  }, [currentSatellite]);
 
   const handleSubmit = (): void => {
-    if (!name.trim()) return;
-    addTask({
+    if (!name.trim() || !currentSatellitePartNo) return;
+    addTask(currentSatellitePartNo, {
       name: name.trim(),
       phaseType,
       relatedUnitPartNo: relatedUnitPartNo || null,
@@ -129,7 +130,7 @@ export default function TaskDialog({
         <Button
           variant="contained"
           onClick={handleSubmit}
-          disabled={!name.trim()}
+          disabled={!name.trim() || !currentSatellitePartNo}
         >
           添加
         </Button>

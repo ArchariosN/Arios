@@ -1,5 +1,5 @@
 // ============================================================
-// src/components/ait/AitAddDialog.tsx — 新增工作项弹窗
+// src/components/ait/AitAddDialog.tsx — 新增工作项弹窗（v2 多星作用域）
 // 工作名/类型/关联单机/计划时间/负责人/备注
 // ============================================================
 
@@ -29,8 +29,11 @@ export default function AitAddDialog({
   onClose,
 }: AitAddDialogProps): React.ReactElement {
   const addAitWork = usePhaseStore((s) => s.addAitWork);
-  const aitWorks = usePhaseStore((s) => s.aitWorks);
-  const project = useBomStore((s) => s.project);
+  const currentSatellitePartNo = useBomStore((s) => s.currentSatellitePartNo);
+  const aitWorks = usePhaseStore((s) =>
+    currentSatellitePartNo ? s.getAitWorks(currentSatellitePartNo) : [],
+  );
+  const currentSatellite = useBomStore((s) => s.getCurrentSatellite());
 
   const [name, setName] = useState('');
   const [type, setType] = useState<AitWorkType>('electrical_test');
@@ -51,9 +54,9 @@ export default function AitAddDialog({
   }, [open]);
 
   const equipmentOptions = useMemo(() => {
-    if (!project) return [];
+    if (!currentSatellite) return [];
     const list: { partNo: string; label: string }[] = [];
-    for (const sub of project.satellite.subsystems) {
+    for (const sub of currentSatellite.subsystems) {
       for (const unit of sub.units) {
         if (unit.type === 'equipment') {
           list.push({
@@ -64,10 +67,10 @@ export default function AitAddDialog({
       }
     }
     return list;
-  }, [project]);
+  }, [currentSatellite]);
 
   const handleSubmit = (): void => {
-    if (!name.trim()) return;
+    if (!name.trim() || !currentSatellitePartNo) return;
 
     // 计算待开始列的最大 order
     const pendingWorks = aitWorks.filter((w) => w.status === 'pending');
@@ -76,7 +79,7 @@ export default function AitAddDialog({
       -1,
     );
 
-    addAitWork({
+    addAitWork(currentSatellitePartNo, {
       name: name.trim(),
       type,
       order: maxOrder + 1,
@@ -163,7 +166,7 @@ export default function AitAddDialog({
         <Button
           variant="contained"
           onClick={handleSubmit}
-          disabled={!name.trim()}
+          disabled={!name.trim() || !currentSatellitePartNo}
         >
           添加
         </Button>

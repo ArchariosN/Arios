@@ -1,6 +1,6 @@
 // ============================================================
 // src/types/index.ts — 全局类型定义
-// 卫星制造项目管理系统（Demo）
+// 卫星制造项目管理系统（Demo）v2 增量
 // ============================================================
 
 // ---------- 原始 BOM JSON 节点（bom_tree.json 的结构） ----------
@@ -42,10 +42,21 @@ export type AitWorkStatus = 'pending' | 'in_progress' | 'completed';
 export type KitStatusType = 'complete' | 'partial' | 'none';
 /** 主题模式 */
 export type ThemeMode = 'light' | 'dark';
-/** 页面类型 */
-export type PageType = 'overview' | 'tree' | 'kitboard' | 'phase' | 'ait';
 /** 齐套筛选 */
 export type KitFilter = 'all' | 'electrical' | 'qualification' | 'flight';
+
+// ---------- v2 导航：两级页面状态 ----------
+/** 全局页面（无需选中项目） */
+export type GlobalPage = 'overview' | 'project-management';
+
+/** 项目内主页面（选中项目后激活） */
+export type ProjectPage = 'tree' | 'kitboard' | 'phase' | 'ait';
+
+/** 两级页面状态 */
+export interface PageState {
+  scope: 'global' | 'project';
+  page: GlobalPage | ProjectPage;
+}
 
 // ---------- 单机三状态 ----------
 export interface UnitStatus {
@@ -95,13 +106,39 @@ export interface Satellite {
   subsystems: Subsystem[];
 }
 
-// ---------- 领域模型：项目/批次 ----------
+// ---------- 领域模型：项目/批次（v2 多星） ----------
 export interface Project {
   id: string;
-  /** 项目名称，如 "灵犀10B" */
+  /** 项目名称，用户填写或导入生成，不再硬编码 */
+  name: string;
+  /** 卫星型号 */
+  satelliteModel: string;
+  /** 卫星列表（v1.0 的 satellite 单数改为复数数组） */
+  satellites: Satellite[];
+  /** 创建时间 ISO 8601 */
+  createdAt: string;
+  /** 最后更新时间 ISO 8601 */
+  updatedAt: string;
+}
+
+// ---------- v2 新增：项目摘要（列表页用） ----------
+export interface ProjectSummary {
+  id: string;
   name: string;
   satelliteModel: string;
-  satellite: Satellite;
+  satelliteCount: number;
+  totalMaterials: number;
+  kitRate: number;
+  updatedAt: string;
+}
+
+// ---------- v2 新增：单星摘要（卫星切换/对比用） ----------
+export interface SatelliteSummary {
+  partNo: string;
+  name: string;
+  totalMaterials: number;
+  kitRate: number;
+  subsystemCount: number;
 }
 
 // ---------- 阶段临时任务 ----------
@@ -153,12 +190,95 @@ export interface ProjectMetrics {
   aitWorkCount: number;
 }
 
-// ---------- 服务接口 ----------
+// ---------- v2 新增：Excel 导入相关类型 ----------
+
+/** Excel 模板列定义 */
+export interface ExcelColumn {
+  /** 列序（A=0, B=1, ...） */
+  index: number;
+  /** 中文列名 */
+  label: string;
+  /** 对应字段名 */
+  field: string;
+  /** 是否必填 */
+  required: boolean;
+}
+
+/** Excel 导入预览项（单行校验结果） */
+export interface ExcelRowValidation {
+  /** 行号（从 2 开始，1 为表头） */
+  row: number;
+  /** 料号 */
+  partNo: string;
+  /** 品名 */
+  name: string;
+  /** 是否有效 */
+  valid: boolean;
+  /** 错误信息（valid=false 时） */
+  errors: string[];
+}
+
+/** 单个 sheet 的解析结果（对应一颗卫星） */
+export interface ExcelSheetResult {
+  /** sheet 名（= 卫星名） */
+  sheetName: string;
+  /** 解析出的卫星（解析成功时） */
+  satellite: Satellite | null;
+  /** 行校验结果列表 */
+  rowValidations: ExcelRowValidation[];
+  /** 物料总数 */
+  totalRows: number;
+  /** 有效行数 */
+  validRows: number;
+  /** 错误信息（解析失败时） */
+  error: string | null;
+}
+
+/** Excel 导入总体结果 */
+export interface ExcelImportResult {
+  /** 是否成功 */
+  success: boolean;
+  /** 导入的卫星数量 */
+  satelliteCount: number;
+  /** 每个 sheet 的解析结果 */
+  sheetResults: ExcelSheetResult[];
+  /** 总物料数 */
+  totalMaterials: number;
+  /** 错误汇总 */
+  errors: string[];
+  /** 导入的项目 ID（导入到哪个项目） */
+  projectId: string;
+}
+
+/** Excel 导入选项 */
+export interface ExcelImportOptions {
+  /** 导入策略：append=追加卫星，overwrite=覆盖项目 */
+  strategy: 'append' | 'overwrite';
+  /** 目标项目 ID */
+  projectId: string;
+  /** 是否跳过无效行 */
+  skipInvalidRows: boolean;
+}
+
+// ---------- 服务接口（v2 扩展） ----------
 export interface DataService {
+  /** 获取原始 BOM JSON 树 */
   fetchBomTree(): Promise<RawBomNode>;
+  /** 获取示例项目（作为种子数据） */
   fetchProject(): Promise<Project>;
-  fetchAitWorks(): Promise<AitWork[]>;
-  fetchTasks(): Promise<Task[]>;
+  /** [v2] 获取所有项目列表（首次返回示例项目） */
+  fetchProjects(): Promise<Project[]>;
+  /** [v2] 创建新项目（空白） */
+  createProject(params: {
+    name: string;
+    satelliteModel: string;
+  }): Promise<Project>;
+  /** [v2] 从示例数据创建项目（复制示例为种子） */
+  createProjectFromExample(name: string): Promise<Project>;
+  /** 获取预置 AIT 工作项（按卫星作用域） */
+  fetchAitWorks(satellitePartNo?: string): Promise<AitWork[]>;
+  /** 获取预置临时任务（按卫星作用域） */
+  fetchTasks(satellitePartNo?: string): Promise<Task[]>;
 }
 
 // ---------- AIT 预置工作类型映射 ----------
@@ -194,3 +314,13 @@ export const PHASE_ORDER: PhaseType[] = [
   'integration',
   'ait',
 ];
+
+// ---------- v2 导航标签映射（面包屑用） ----------
+export const PAGE_LABELS: Record<string, string> = {
+  overview: '总览',
+  'project-management': '项目管理',
+  tree: '层级数据',
+  kitboard: 'BOM 齐套',
+  phase: '阶段管理',
+  ait: 'AIT 编排',
+};

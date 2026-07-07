@@ -1,5 +1,5 @@
 // ============================================================
-// src/components/kitboard/KitDetailTable.tsx — 下钻明细表
+// src/components/kitboard/KitDetailTable.tsx — 下钻明细表（v2 多星作用域）
 // 单机列表 + 齐套状态行内编辑
 // ============================================================
 
@@ -30,12 +30,14 @@ export default function KitDetailTable({
   filter,
 }: KitDetailTableProps): React.ReactElement {
   const updateUnit = useBomStore((s) => s.updateUnit);
+  const currentSatellitePartNo = useBomStore((s) => s.currentSatellitePartNo);
 
   const handleStatusToggle = (
     unit: Unit,
     field: 'electrical' | 'qualification' | 'flight',
   ): void => {
-    updateUnit(unit.partNo, {
+    if (!currentSatellitePartNo) return;
+    updateUnit(currentSatellitePartNo, unit.partNo, {
       status: { ...unit.status, [field]: !unit.status[field] },
     });
   };

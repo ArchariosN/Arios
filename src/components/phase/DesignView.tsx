@@ -1,5 +1,5 @@
 // ============================================================
-// src/components/phase/DesignView.tsx — 设计/投产阶段视图
+// src/components/phase/DesignView.tsx — 设计/投产阶段视图（v2 多星作用域）
 // 单机投产状态 + 交付日期行内编辑
 // ============================================================
 
@@ -30,14 +30,15 @@ interface DesignViewProps {
 export default function DesignView({
   variant = 'design',
 }: DesignViewProps): React.ReactElement {
-  const project = useBomStore((s) => s.project);
+  const currentSatellite = useBomStore((s) => s.getCurrentSatellite());
+  const currentSatellitePartNo = useBomStore((s) => s.currentSatellitePartNo);
   const updateUnit = useBomStore((s) => s.updateUnit);
 
   // 收集所有 EQ 单机及其所属分系统
   const unitsWithSub = useMemo(() => {
-    if (!project) return [];
+    if (!currentSatellite) return [];
     const list: { unit: Unit; subsystemName: string }[] = [];
-    for (const sub of project.satellite.subsystems) {
+    for (const sub of currentSatellite.subsystems) {
       for (const unit of sub.units) {
         if (unit.type === 'equipment') {
           list.push({ unit, subsystemName: sub.name });
@@ -51,14 +52,16 @@ export default function DesignView({
       );
     }
     return list;
-  }, [project, variant]);
+  }, [currentSatellite, variant]);
 
   const handleProductionChange = (partNo: string, value: ProductionStatus): void => {
-    updateUnit(partNo, { productionStatus: value });
+    if (!currentSatellitePartNo) return;
+    updateUnit(currentSatellitePartNo, partNo, { productionStatus: value });
   };
 
   const handleDateChange = (partNo: string, value: string): void => {
-    updateUnit(partNo, { deliveryDate: value || null });
+    if (!currentSatellitePartNo) return;
+    updateUnit(currentSatellitePartNo, partNo, { deliveryDate: value || null });
   };
 
   if (unitsWithSub.length === 0) {

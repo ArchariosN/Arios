@@ -1,6 +1,6 @@
 // ============================================================
-// src/components/layout/StatusBar.tsx — 底部状态栏
-// 显示：项目名 · 物料总数 · 齐套率 · 当前阶段
+// src/components/layout/StatusBar.tsx — 底部状态栏（v2 动态读取）
+// 显示：项目名 · 卫星名 · 物料总数 · 齐套率 · 当前阶段
 // ============================================================
 
 import { Box, Typography } from '@mui/material';
@@ -10,12 +10,16 @@ import { calcProjectMetrics } from '@/utils/kitCalculator';
 import { PHASE_LABELS } from '@/types';
 
 export default function StatusBar(): React.ReactElement {
-  const project = useBomStore((s) => s.project);
+  const currentProject = useBomStore((s) => s.getCurrentProject());
+  const currentSatellite = useBomStore((s) => s.getCurrentSatellite());
+  const currentSatellitePartNo = useBomStore((s) => s.currentSatellitePartNo);
   const currentPhase = usePhaseStore((s) => s.currentPhase);
-  const aitWorks = usePhaseStore((s) => s.aitWorks);
+  const aitWorks = usePhaseStore((s) =>
+    currentSatellitePartNo ? s.getAitWorks(currentSatellitePartNo) : [],
+  );
 
-  const metrics = project
-    ? calcProjectMetrics(project, aitWorks)
+  const metrics = currentSatellite
+    ? calcProjectMetrics(currentSatellite, aitWorks)
     : { totalMaterials: 0, kitRate: 0, productionCount: 0, aitWorkCount: 0 };
 
   return (
@@ -36,7 +40,7 @@ export default function StatusBar(): React.ReactElement {
       }}
     >
       <Typography variant="caption" sx={{ fontWeight: 500 }}>
-        {project?.name ?? '—'} · {project?.satelliteModel ?? ''}
+        {currentProject?.name ?? '—'} · {currentSatellite?.name ?? '未选卫星'}
       </Typography>
       <Typography variant="caption">
         物料总数：<strong>{metrics.totalMaterials}</strong>

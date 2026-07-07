@@ -1,5 +1,5 @@
 // ============================================================
-// src/components/phase/PhaseManager.tsx — 阶段管理页
+// src/components/phase/PhaseManager.tsx — 阶段管理页（v2 多星作用域）
 // 步骤条切换 + 视图路由 + 临时任务区
 // ============================================================
 
@@ -17,6 +17,7 @@ import {
   IconButton,
   Stack,
   Divider,
+  CircularProgress,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -29,15 +30,20 @@ import IntegrationView from './IntegrationView';
 import TaskDialog from './TaskDialog';
 import { usePhaseStore } from '@/store/usePhaseStore';
 import { useUiStore } from '@/store/useUiStore';
+import { useBomStore } from '@/store/useBomStore';
 import { PHASE_LABELS } from '@/types';
 import type { PhaseType } from '@/types';
 
 export default function PhaseManager(): React.ReactElement {
   const currentPhase = usePhaseStore((s) => s.currentPhase);
   const setCurrentPhase = usePhaseStore((s) => s.setCurrentPhase);
-  const tasks = usePhaseStore((s) => s.tasks);
+  const currentSatellitePartNo = useBomStore((s) => s.currentSatellitePartNo);
+  const tasks = usePhaseStore((s) =>
+    currentSatellitePartNo ? s.getTasks(currentSatellitePartNo) : [],
+  );
   const removeTask = usePhaseStore((s) => s.removeTask);
-  const setPage = useUiStore((s) => s.setPage);
+  const goToProjectPage = useUiStore((s) => s.goToProjectPage);
+  const currentSatellite = useBomStore((s) => s.getCurrentSatellite());
 
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
 
@@ -52,8 +58,18 @@ export default function PhaseManager(): React.ReactElement {
   }, [setCurrentPhase]);
 
   // AIT 阶段跳转到 AIT 看板
-  if (currentPhase === 'ait') {
-    setPage('ait');
+  useEffect(() => {
+    if (currentPhase === 'ait') {
+      goToProjectPage('ait');
+    }
+  }, [currentPhase, goToProjectPage]);
+
+  if (!currentSatellite || !currentSatellitePartNo) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+        {currentSatellitePartNo ? <CircularProgress /> : <Typography color="text.secondary">暂无卫星数据</Typography>}
+      </Box>
+    );
   }
 
   const phaseTasks = tasks.filter((t) => t.phaseType === currentPhase);
@@ -138,7 +154,7 @@ export default function PhaseManager(): React.ReactElement {
                     secondaryAction={
                       <IconButton
                         edge="end"
-                        onClick={() => removeTask(task.id)}
+                        onClick={() => removeTask(currentSatellitePartNo, task.id)}
                         size="small"
                       >
                         <DeleteIcon />

@@ -1,5 +1,5 @@
 // ============================================================
-// src/components/tree/NodeDetail.tsx — 节点详情面板
+// src/components/tree/NodeDetail.tsx — 节点详情面板（v2 多星作用域）
 // 基本信息 + 三状态勾选 + 齐套/投产/交付编辑
 // ============================================================
 
@@ -58,11 +58,12 @@ function InfoRow({
 export default function NodeDetail({
   partNo,
 }: NodeDetailProps): React.ReactElement {
-  const project = useBomStore((s) => s.project);
+  const currentSatellite = useBomStore((s) => s.getCurrentSatellite());
+  const currentSatellitePartNo = useBomStore((s) => s.currentSatellitePartNo);
   const updateUnit = useBomStore((s) => s.updateUnit);
   const selectNode = useUiStore((s) => s.selectNode);
 
-  if (!project || !partNo) {
+  if (!currentSatellite || !partNo) {
     return (
       <Card sx={{ height: '100%' }}>
         <CardContent>
@@ -74,8 +75,8 @@ export default function NodeDetail({
     );
   }
 
-  // 查找节点：可能是整星、分系统或单机
-  const satellite = project.satellite;
+  const satellite = currentSatellite;
+  const satPartNo = currentSatellitePartNo ?? satellite.partNo;
 
   // 整星节点
   if (satellite.partNo === partNo) {
@@ -222,21 +223,21 @@ export default function NodeDetail({
   const isEquipment = unit.type === 'equipment';
 
   const handleStatusChange = (key: keyof UnitStatus, value: boolean): void => {
-    updateUnit(unit.partNo, {
+    updateUnit(satPartNo, unit.partNo, {
       status: { ...unit.status, [key]: value },
     });
   };
 
   const handleKitCompleteChange = (value: boolean): void => {
-    updateUnit(unit.partNo, { isKitComplete: value });
+    updateUnit(satPartNo, unit.partNo, { isKitComplete: value });
   };
 
   const handleProductionChange = (value: ProductionStatus): void => {
-    updateUnit(unit.partNo, { productionStatus: value });
+    updateUnit(satPartNo, unit.partNo, { productionStatus: value });
   };
 
   const handleDeliveryDateChange = (value: string): void => {
-    updateUnit(unit.partNo, { deliveryDate: value || null });
+    updateUnit(satPartNo, unit.partNo, { deliveryDate: value || null });
   };
 
   return (
